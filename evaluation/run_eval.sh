@@ -42,6 +42,23 @@ VERSION="1.0.0"
 # When true, tasks without scenarios.json will be skipped
 RUN_NPC_TASKS_ONLY=false
 
+# TASK_LIST is an optional file with one task name per line; when set, only
+# those tasks are run (e.g. the output of
+# generate_task_images.py --allowed-services owncloud,rocketchat --names-only)
+TASK_LIST=""
+
+# IMAGE_PREFIX is where task images come from. Released images are
+# ghcr.io/theagentcompany/<task>-image:<version>; set it to your own prefix to
+# run locally built images (e.g. translated tasks). Local images are not
+# deleted after evaluation since they cannot be pulled again.
+DEFAULT_IMAGE_PREFIX="ghcr.io/theagentcompany"
+IMAGE_PREFIX="$DEFAULT_IMAGE_PREFIX"
+
+# MAX_ITERATIONS and CONDENSER are passed to run_eval.py; defaults match the
+# baseline experiments. Lower iterations / --condenser browser save tokens.
+MAX_ITERATIONS=100
+CONDENSER="noop"
+
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -69,6 +86,22 @@ while [[ $# -gt 0 ]]; do
             RUN_NPC_TASKS_ONLY=true
             shift
             ;;
+        --task-list)
+            TASK_LIST="$2"
+            shift 2
+            ;;
+        --image-prefix)
+            IMAGE_PREFIX="$2"
+            shift 2
+            ;;
+        --max-iterations)
+            MAX_ITERATIONS="$2"
+            shift 2
+            ;;
+        --condenser)
+            CONDENSER="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1"
             exit 1
@@ -87,6 +120,18 @@ echo "Using environment LLM config: $ENV_LLM_CONFIG"
 echo "Outputs path: $OUTPUTS_PATH"
 echo "Server hostname: $SERVER_HOSTNAME"
 echo "Run NPC tasks only: $RUN_NPC_TASKS_ONLY"
+echo "Task list: ${TASK_LIST:-<all tasks>}"
+echo "Image prefix: $IMAGE_PREFIX"
+echo "Max iterations: $MAX_ITERATIONS, condenser: $CONDENSER"
+
+if [ -n "$TASK_LIST" ]; then
+    if [ ! -f "$TASK_LIST" ]; then
+        echo "Error: task list file not found: $TASK_LIST"
+        exit 1
+    fi
+    # the loop below changes directory, so keep an absolute path
+    TASK_LIST="$(cd "$(dirname "$TASK_LIST")" && pwd)/$(basename "$TASK_LIST")"
+fi
 
 # Iterate through each directory in tasks
 for task_dir in "$TASKS_DIR"/*/; do
@@ -103,11 +148,16 @@ for task_dir in "$TASKS_DIR"/*/; do
         echo "Skipping $task_name - no scenarios.json found (run-npc-tasks-only mode enabled)"
         continue
     fi
+
+    # Check if a task list is given and this task is not in it
+    if [ -n "$TASK_LIST" ] && ! grep -qxF "$task_name" <(sed 's/[[:space:]]*$//' "$TASK_LIST"); then
+        continue
+    fi
     
     echo "Running evaluation for task: $task_name"
     
-    task_image="ghcr.io/theagentcompany/${task_name}-image:${VERSION}"
-    echo "Use released image $task_image..."
+    task_image="${IMAGE_PREFIX}/${task_name}-image:${VERSION}"
+    echo "Use image $task_image..."
     
     # Run evaluation from the evaluation directory
     cd "$SCRIPT_DIR"
@@ -116,13 +166,20 @@ for task_dir in "$TASKS_DIR"/*/; do
         --env-llm-config "$ENV_LLM_CONFIG" \
         --outputs-path "$OUTPUTS_PATH" \
         --server-hostname "$SERVER_HOSTNAME" \
-        --task-image-name "$task_image"
+        --task-image-name "$task_image" \
+        --max-iterations "$MAX_ITERATIONS" \
+        --condenser "$CONDENSER"
 
     # Prune unused images and volumes
-    docker image rm "$task_image"
+    if [ "$IMAGE_PREFIX" = "$DEFAULT_IMAGE_PREFIX" ]; then
+        docker image rm "$task_image"
+    fi
     docker images "ghcr.io/all-hands-ai/runtime" -q | xargs -r docker rmi -f
     docker volume prune -f
     docker system prune -f
+    # the OpenHands runtime image (several GB) is rebuilt for every task;
+    # drop its build cache too so disk usage does not keep growing
+    docker builder prune -af
 done
 
 echo "All evaluation completed successfully!"

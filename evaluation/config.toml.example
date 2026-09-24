@@ -1,0 +1,71 @@
+# Example config.toml for running TheAgentCompany with free-tier LLM APIs.
+#
+#   cp config.toml.example config.toml    # config.toml is git-ignored
+#   # fill in your keys, then:
+#   bash run_eval.sh --agent-llm-config gemini-agent --env-llm-config gemini-env ...
+#
+# There are two LLM roles:
+#
+# 1. Agent LLM (--agent-llm-config): the model being evaluated. It makes many
+#    calls per task (up to --max-iterations, 100 by default) and its prompt
+#    grows every step, so it needs a big context window and a high
+#    tokens-per-minute limit. Loaded by OpenHands, so any litellm model string
+#    works (gemini/..., openrouter/..., openai/... + base_url).
+#
+# 2. Environment LLM (--env-llm-config): plays the NPC coworkers on RocketChat
+#    and grades some checkpoints. It is used *inside* the task container, which
+#    ships an old litellm (1.23.16) and sotopia, so it MUST be an
+#    OpenAI-compatible endpoint: set base_url and prefix the model with "openai/".
+#
+# Free-tier limits change often; check your provider's console before long runs.
+# Model IDs below are examples - list what your key can use first, e.g.
+#   curl "https://generativelanguage.googleapis.com/v1beta/openai/models" -H "Authorization: Bearer $GEMINI_API_KEY"
+#   curl "https://integrate.api.nvidia.com/v1/models"
+
+############################ Agent LLM options ############################
+
+# Google AI Studio (https://aistudio.google.com/app/apikey), no credit card.
+# 1M context and a high TPM limit, strong in Bangla. Recommended agent LLM.
+[llm.gemini-agent]
+model = "gemini/gemini-2.5-flash"
+api_key = "<GEMINI_API_KEY>"
+# free tiers return HTTP 429 often: retry patiently instead of failing the task
+num_retries = 10
+retry_min_wait = 20
+retry_max_wait = 120
+
+# NVIDIA NIM (https://build.nvidia.com), free with an NVIDIA developer account.
+# Rate limited per minute (~40 RPM) rather than per day. The first "openai/"
+# is the litellm provider prefix, the rest is the NIM model id.
+[llm.nim-agent]
+model = "openai/openai/gpt-oss-120b"
+base_url = "https://integrate.api.nvidia.com/v1"
+api_key = "<NVIDIA_API_KEY>"
+num_retries = 10
+retry_min_wait = 20
+retry_max_wait = 120
+
+# OpenRouter free models (":free" suffix). Only 50 free-model requests/day in total
+# unless you have bought $10 of credits once (then 1000/day) - enough for
+# roughly one task a day without credits.
+[llm.openrouter-agent]
+model = "openrouter/<model-id>:free"
+api_key = "<OPENROUTER_API_KEY>"
+num_retries = 10
+retry_min_wait = 20
+retry_max_wait = 120
+
+######################### Environment LLM options #########################
+
+# Gemini through its OpenAI-compatible endpoint. Use a different model than
+# the agent so the two don't share one per-model quota.
+[llm.gemini-env]
+model = "openai/gemini-2.5-flash-lite"
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+api_key = "<GEMINI_API_KEY>"
+
+# NVIDIA NIM as environment LLM (keeps the Gemini quota for the agent).
+[llm.nim-env]
+model = "openai/meta/llama-3.3-70b-instruct"
+base_url = "https://integrate.api.nvidia.com/v1"
+api_key = "<NVIDIA_API_KEY>"

@@ -17,7 +17,10 @@ from openhands.core.config import (
     get_parser,
 )
 from openhands.core.config.agent_config import AgentConfig
-from openhands.core.config.condenser_config import NoOpCondenserConfig
+from openhands.core.config.condenser_config import (
+    BrowserOutputCondenserConfig,
+    NoOpCondenserConfig,
+)
 from openhands.core.logger import openhands_logger as logger
 from openhands.core.main import create_runtime, run_controller
 from openhands.events.action import CmdRunAction, MessageAction
@@ -32,12 +35,14 @@ def get_config(
     base_container_image: str,
     task_short_name: str,
     mount_path_on_host: str,
-    llm_config: LLMConfig
+    llm_config: LLMConfig,
+    max_iterations: int = 100,
+    condenser: str = 'noop',
 ) -> OpenHandsConfig:
     config = OpenHandsConfig(
         run_as_openhands=False,
         max_budget_per_task=4,
-        max_iterations=100,
+        max_iterations=max_iterations,
         save_trajectory_path=os.path.join(mount_path_on_host, f'traj_{task_short_name}.json'),
         sandbox=SandboxConfig(
             base_container_image=base_container_image,
@@ -58,7 +63,11 @@ def get_config(
         enable_prompt_extensions=False,
         enable_history_truncation=False,
         enable_som_visual_browsing=False,
-        condenser=NoOpCondenserConfig(),
+        # 'noop' keeps the full history, as in the baseline experiments.
+        # 'browser' masks all but the latest browser observation, which
+        # cuts prompt tokens a lot on browsing-heavy tasks (useful for
+        # free-tier APIs with tokens-per-minute limits).
+        condenser=BrowserOutputCondenserConfig() if condenser == 'browser' else NoOpCondenserConfig(),
     )
     config.set_agent_config(agent_config)
     return config
@@ -211,6 +220,16 @@ if __name__ == '__main__':
         help='LLM config for evaluation environment (NPC & llm-based evaluator)',
     )
     parser.add_argument(
+        '--condenser',
+        type=str,
+        choices=['noop', 'browser'],
+        default='noop',
+        help='History condenser for the agent: noop (baseline default, full history) or '
+        'browser (mask old browser observations to save tokens)',
+    )
+    # --max-iterations is defined by OpenHands' parser; keep the baseline default of 100
+    parser.set_defaults(max_iterations=100)
+    parser.add_argument(
         '--build-image-only',
         type=bool,
         default=False,
@@ -266,7 +285,8 @@ if __name__ == '__main__':
     if env_llm_config.api_key is None:
         raise ValueError(f'LLM API key is not set for evaluation environment')
 
-    config: OpenHandsConfig = get_config(args.task_image_name, task_short_name, temp_dir, agent_llm_config)
+    config: OpenHandsConfig = get_config(args.task_image_name, task_short_name, temp_dir, agent_llm_config,
+                                         max_iterations=args.max_iterations, condenser=args.condenser)
     runtime: Runtime = create_runtime(config)
     call_async_from_sync(runtime.connect)
 

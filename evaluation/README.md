@@ -56,6 +56,12 @@ Here's a brief explanation of each argument:
 - `--server-hostname`: the hostname of the server that hosts all the web services. It could be `localhost` if you are running the evaluation and services on the same machine. If the services are hosted on a remote machine, you must use the hostname of the remote machine rather than IP address.
 - `--version`: the version of the task images to use. Currently, the only supported version is `1.0.0`.
 - `--run-npc-tasks-only`: when enabled, only runs tasks that have a `scenarios.json` file defined. Tasks without this file will be skipped. This is useful for running only NPC-based tasks.
+- `--task-list`: a file with one task name per line; only those tasks are run. `python generate_task_images.py --allowed-services owncloud,rocketchat --names-only` prints the tasks that don't need GitLab or Plane (see `servers/setup-lite.sh`).
+- `--image-prefix`: image prefix for task images (default `ghcr.io/theagentcompany`). Use it to run locally built images, e.g. translated tasks from `workspaces/make_translated_task.sh`. Local images are not deleted after evaluation.
+- `--max-iterations`: maximum agent steps per task (default 100, as in the baseline).
+- `--condenser`: `noop` (default, full history as in the baseline) or `browser` (mask old browser observations to cut prompt tokens, useful with free-tier APIs).
+
+`config.toml.example` has example groups for free-tier providers, and `check_llm_config.py` sends one test prompt through a group to catch bad keys, model names or quotas before a long run.
 
 The script is idempotent. If you run it again, it will resume from the last checkpoint.
 It would usually take a few days to finish evaluation.

@@ -49,6 +49,17 @@ python generate_task_images.py --exclude-llm-functions --output task_images_no_l
 python generate_task_images.py --exclude-scenarios --exclude-llm-functions --output task_images_clean.json
 ```
 
+### Only Tasks Covered by the Services You Run
+```bash
+# GitLab and Plane not running (e.g. servers/setup-lite.sh)
+python generate_task_images.py --allowed-services owncloud,rocketchat --output lite_tasks.json
+# Output: 93 task image URLs
+
+# plain task names, one per line, for run_eval.sh --task-list
+python generate_task_images.py --allowed-services owncloud --names-only --output owncloud_tasks.txt
+# Output: 36 task names
+```
+
 ### Specify Version
 ```bash
 python generate_task_images.py --version 2.0.0 --output task_images_v2.json
@@ -71,6 +82,8 @@ python generate_task_images.py --exclude-scenarios --exclude-llm-functions --ver
 - `--output`: Output JSON file path (optional, prints to stdout if not specified)
 - `--exclude-scenarios`: Exclude tasks that have `scenarios.json` files
 - `--exclude-llm-functions`: Exclude tasks that have LLM function calls (detects `llm_complete`, `evaluate_with_llm`, `evaluate_chat_history_with_llm`)
+- `--allowed-services`: Comma-separated services you run (`gitlab`, `owncloud`, `plane`, `rocketchat`); tasks whose `dependencies.yml` needs any other service are excluded
+- `--names-only`: Output plain task names, one per line, instead of JSON
 
 ## Output Format
 
